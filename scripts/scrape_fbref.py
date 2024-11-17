@@ -6,6 +6,8 @@ import time
 import random
 from requests.adapters import HTTPAdapter, Retry
 import traceback
+import pandas as pd
+import os
 
 # Constants
 BASE_URL = "https://fbref.com/en"
@@ -20,6 +22,15 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 11.5; rv:90.0) Gecko/20100101 Firefox/90.0',
 ]
+
+COLUMNS_TO_KEEP = {
+    "shooting": ["Date", "Time", "Round", "Day", "Venue", "Result", "GF", "GA", "Opponent", "Sh", "SoT", "SoT%", "G/Sh", "G/SoT", "FK", "PK", "PKAtt", "xG", "npxG", "npxG/Sh", "G-xG", "np:G-xG"],
+    "keeper": ["Date", "SoTA", "Saves", "Save%", "CS", "PSxG+/-", "Stp%"],
+    "passing": ["Date", "Cmp", "Att", "Cmp%", "TotDist", "PrgDist", "Ast", "xAG", "xA", "KP", "1/3", "PPA", "CrsPA", "PrgP"],
+    "gca": ["Date", "SCA", "PassLive", "PassDead", "TO", "Fld", "Def", "GCA", "TO", "Sh", "Fld", "Def"],
+    "defense": ["Date", "Tkl", "TklW", "Blocks", "Sh", "Pass", "Int", "Clr", "Err"],
+    "possession": ["Date", "Poss", "Touches", "Att 3rd", "Att Pen", "Att", "Succ", "Succ%", "Carries", "TotDist", "PrgDist", "PrgC", "1/3", "Dis"]
+}
 
 def get_soup(url: str) -> BeautifulSoup:
     """
@@ -121,17 +132,9 @@ def get_match_log_urls(team: Tuple[str, str]) -> Dict[str, str]:
         "gca": f"{base_match_log_url}/gca/{team_name}-Match-Logs-Premier-League",
         "defense": f"{base_match_log_url}/defense/{team_name}-Match-Logs-Premier-League",
         "possession": f"{base_match_log_url}/possession/{team_name}-Match-Logs-Premier-League",
-        "misc": f"{base_match_log_url}/misc/{team_name}-Match-Logs-Premier-League",
     }
 
 def scrape_match_logs():
-    """
-    Scrape match logs for all Premier League teams.
-    
-    This function fetches the Premier League stats page, extracts team names,
-    generates URLs for different types of match logs for each team, and scrapes the stats for each team.
-    """
-    
     print("Starting to scrape match logs...")
     try:
         soup = get_soup(PL_STATS_URL)
@@ -142,10 +145,13 @@ def scrape_match_logs():
         teams = get_team_names_and_id(soup)
         print(f"Found {len(teams)} teams")
         
+        all_match_data = {}
+
         for team in teams:
             print(f"Processing team: {team[0]}")
             match_log_urls = get_match_log_urls(team)
-            
+            team_match_count = 0
+
             for log_type, url in match_log_urls.items():
                 print(f"  Scraping {log_type} data from {url}")
                 soup = get_soup(url)
@@ -162,33 +168,71 @@ def scrape_match_logs():
                     print(f"  Not enough rows in stats table for {team[0]} - {log_type}")
                     continue
 
-                # Get column names from the second row (index 1)
                 headers = [th.text.strip() for th in rows[1].find_all("th")]
+                columns_to_keep = COLUMNS_TO_KEEP.get(log_type, [])
+                if not columns_to_keep:
+                    print(f"  No columns defined for log type: {log_type}")
+                    continue
 
-                # Define the columns we want to keep
-                columns_to_keep = ["Date", "Time", "Round", "Day", "Venue", "Result", "GF", "GA", "Opponent", "Sh", "SoT", "SoT%", "G/Sh", "G/SoT", "FK",
-                                    "PK", "PKAtt", "xG", "npxG", "npxG/Sh", "G-xG", "np:G-xG"]
+                indices_to_keep = [i for i, col in enumerate(headers) if col in columns_to_keep]
 
-                # Find indices of columns we want to keep
-                indices_to_keep = [headers.index(col) for col in columns_to_keep if col in headers]
-
-                # Extract data from rows
-                match_data = []
-                for row in rows[2:-1]:  # Skip the first two rows (useless header and column names)
+                log_type_match_count = 0
+                for row in rows[2:-1]:
                     cells = row.find_all(["th", "td"])
                     if len(cells) > max(indices_to_keep):
-                        match_data.append([cells[i].text.strip() for i in indices_to_keep])
+                        match_data = {headers[i]: cells[i].text.strip() for i in indices_to_keep}
+                        match_key = f"{match_data['Date']}_{team[0]}"
+                        
+                        if match_key not in all_match_data:
+                            all_match_data[match_key] = {
+                                "Date": match_data['Date'],
+                                "Team": team[0],
+                            }
+                        
+                        # Add venue and opponent info if it's not already there (only for shooting log type)
+                        if log_type == "shooting":
+                            venue = match_data.get('Venue', '')
+                            all_match_data[match_key]['Venue'] = venue
+                            all_match_data[match_key]['Opponent'] = match_data.get('Opponent', '')
+                        
+                        # Add stats for this log type
+                        for key, value in match_data.items():
+                            if key not in ['Date', 'Venue', 'Opponent']:
+                                all_match_data[match_key][f"{log_type}_{key}"] = value
+                        
+                        log_type_match_count += 1
 
-                # Process the match_data as needed (e.g., store in a database, write to a file, etc.)
-                print(f"  Extracted {len(match_data)} matches for {team[0]} - {log_type}")
+                team_match_count += log_type_match_count
+                print(f"  Extracted {log_type_match_count} matches for {team[0]} - {log_type}")
                 
-                # Add a delay of at least 3 seconds between requests
                 time.sleep(3 + random.uniform(0, 1))
+        
+            print(f"Total matches extracted for {team[0]}: {team_match_count}")
+
+        df = pd.DataFrame(list(all_match_data.values()))
+        
+        print(f"Created DataFrame with {len(df)} rows and {len(df.columns)} columns.")
+
+        # Create 'data' directory if it doesn't exist
+        os.makedirs('data', exist_ok=True)
+
+        # Save DataFrame to CSV in the 'data' directory
+        csv_path = os.path.join('data/backups', 'match_logs.csv')
+        df.to_csv(csv_path, index=False)
+        print(f"Saved DataFrame to {csv_path}")
 
         print("Finished scraping match logs.")
+        return df
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         print(traceback.format_exc())
+        return None
 
 if __name__ == "__main__":
-    scrape_match_logs()
+    match_logs_df = scrape_match_logs()
+
+
+
+
+
+

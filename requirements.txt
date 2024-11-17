@@ -1,0 +1,11 @@
+requests
+beautifulsoup4
+pandas
+numpy
+sqlalchemy
+python-dotenv
+sklearn
+pymc
+seaborn
+matplotlib
+plotly
