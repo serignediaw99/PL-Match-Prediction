@@ -13,7 +13,7 @@ This project aims to predict the outcomes of Premier League matches using histor
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/serignediaw99/premier-league-match-prediction.git
+   git clone https://github.com/serignediaw99/PL-Match-Prediction.git
    cd premier-league-match-prediction
    ```
 

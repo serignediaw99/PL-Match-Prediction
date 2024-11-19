@@ -155,7 +155,7 @@ def sample_model(model, samples=2000):
             draws=samples,
             tune=1000,
             return_inferencedata=True,
-            cores=1
+            cores=4
         )
     return trace
 
