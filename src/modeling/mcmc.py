@@ -106,19 +106,19 @@ def build_model(data):
     """Build PyMC model for soccer predictions"""
     with pm.Model() as model:
         # Priors for team attack and defense strengths
-        home_advantage = pm.Normal('home_advantage', mu=0.2, sigma=0.1)
+        home_advantage = pm.Normal('home_advantage', mu=0.2, sigma=0.05)
         
         # Team-specific parameters
-        attack = pm.Normal('attack', mu=0, sigma=1, shape=data['n_teams'])
-        defense = pm.Normal('defense', mu=0, sigma=1, shape=data['n_teams'])
+        attack = pm.Normal('attack', mu=0, sigma=0.5, shape=data['n_teams'])
+        defense = pm.Normal('defense', mu=0, sigma=0.5, shape=data['n_teams'])
 
-        beta_home_xG = pm.Normal('beta_home_xG', mu=0, sigma=1)
-        beta_away_xG = pm.Normal('beta_away_xG', mu=0, sigma=1)
+        beta_home_xG = pm.Normal('beta_home_xG', mu=0, sigma=0.1)
+        beta_away_xG = pm.Normal('beta_away_xG', mu=0, sigma=0.1)
 
-        beta_home_possession = pm.Normal('beta_home_possession', mu=0, sigma=1)
-        beta_away_possession = pm.Normal('beta_away_possession', mu=0, sigma=1)
+        beta_home_possession = pm.Normal('beta_home_possession', mu=0, sigma=0.1)
+        beta_away_possession = pm.Normal('beta_away_possession', mu=0, sigma=0.1)
 
-        recent_form_coefficient = pm.Normal('recent_form_coefficient', mu=0, sigma=1)
+        recent_form_coefficient = pm.Normal('recent_form_coefficient', mu=0, sigma=0.1)
 
         # Recent form effect
         recent_form_home = pm.math.stack([data['avg_goals'][team] for team in data['teams']])[data['home_teams']] * recent_form_coefficient
